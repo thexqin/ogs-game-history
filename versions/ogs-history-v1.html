@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OGS Game History</title>
+<style>
+  :root {
+    --paper: #f3ecdd; --card: #fbf7ee; --ink: #1d1b18; --muted: #6f675a;
+    --line: #d9cfba; --kaya: #b9822f; --kaya-soft: #ecdcbb; --bad: #a23b2c;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --paper: #181613; --card: #211e1a; --ink: #efe8da; --muted: #a29a8b;
+            --line: #3a352d; --kaya: #d9a34e; --kaya-soft: #3d3324; --bad: #e07a68; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink);
+         font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font: 600 1.7rem/1.2 Georgia, "Times New Roman", serif; margin: 0 0 4px; text-wrap: balance; }
+  h1 .stone { display: inline-block; width: .7em; height: .7em; border-radius: 50%;
+              background: var(--ink); margin-right: .35em; }
+  h2 { font: 600 1.05rem/1.3 Georgia, serif; margin: 0 0 10px; }
+  .sub { color: var(--muted); margin: 0 0 20px; font-size: .92rem; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+          padding: 16px; margin-bottom: 16px; }
+  label { font-size: .85rem; color: var(--muted); display: block; margin-bottom: 4px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  input[type=text], input[type=number] {
+    font: inherit; color: var(--ink); background: var(--paper); border: 1px solid var(--line);
+    border-radius: 7px; padding: 9px 11px; min-width: 0; }
+  #user { flex: 1 1 200px; } #limit { width: 130px; }
+  button, .filebtn { font: inherit; font-weight: 600; cursor: pointer; border-radius: 7px;
+    padding: 9px 15px; border: 1px solid var(--ink); background: var(--ink); color: var(--paper);
+    margin: 0; display: inline-block; font-size: .95rem; }
+  button.ghost, .filebtn { background: transparent; color: var(--ink); border-color: var(--line); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  button:focus-visible, .filebtn:focus-within, input:focus-visible { outline: 2px solid var(--kaya); outline-offset: 2px; }
+  #status { margin: 12px 0 0; font-size: .9rem; color: var(--muted); min-height: 1.4em; }
+  #status.err { color: var(--bad); }
+  progress { width: 100%; height: 6px; margin-top: 8px; accent-color: var(--kaya); }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; margin-bottom: 16px; }
+  .tile { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .tile .k { font-size: .75rem; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+  .tile .v { font: 600 1.55rem/1.2 Georgia, serif; font-variant-numeric: tabular-nums; }
+  .tile .d { font-size: .8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+  .grid2 .card { margin: 0; }
+  table { width: 100%; border-collapse: collapse; font-size: .9rem; font-variant-numeric: tabular-nums; }
+  th { text-align: left; font-weight: 500; color: var(--muted); font-size: .75rem;
+       text-transform: uppercase; letter-spacing: .05em; padding: 4px 6px; }
+  td { padding: 6px; border-top: 1px solid var(--line); white-space: nowrap; }
+  td.num, th.num { text-align: right; }
+  .bar { width: 90px; height: 8px; background: var(--kaya-soft); border-radius: 4px; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--kaya); }
+  .scroll { overflow-x: auto; }
+  .win { font-weight: 600; } .loss { color: var(--muted); }
+  a { color: inherit; text-decoration-color: var(--kaya); }
+  svg { width: 100%; height: auto; display: block; }
+  svg text { fill: var(--muted); font-size: 11px; }
+  .note { font-size: .8rem; color: var(--muted); margin: 8px 0 0; }
+  #out { margin-top: 20px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1><span class="stone"></span>OGS game history</h1>
+  <p class="sub">Fetch a player's finished games from online-go.com, save them as JSON, and see the record broken down. Everything runs in your browser.</p>
+
+  <div class="card">
+    <form id="form">
+      <label for="user">OGS username (or numeric player ID)</label>
+      <div class="row">
+        <input type="text" id="user" autocomplete="off" autocapitalize="off" spellcheck="false" required>
+        <input type="number" id="limit" min="1" placeholder="Max games" aria-label="Maximum games to fetch (blank for all)">
+        <button id="go">Fetch games</button>
+        <button type="button" class="ghost" id="stop" hidden>Stop</button>
+      </div>
+    </form>
+    <div class="row" style="margin-top:10px">
+      <button type="button" class="ghost" id="save" disabled>Save JSON file</button>
+      <label class="filebtn" tabindex="0">Load JSON file<input type="file" id="file" accept=".json,application/json" hidden></label>
+    </div>
+    <progress id="prog" hidden></progress>
+    <p id="status" role="status"></p>
+  </div>
+
+  <div id="out"></div>
+</div>
+
+<script>
+"use strict";
+const API = "https://online-go.com/api/v1";
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+/* ---------- 1. Fetch ---------- */
+async function getJSON(url, signal) {
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(url, { signal, headers: { Accept: "application/json" } });
+    if (res.status === 429 && attempt < 6) {           // rate limited: back off and retry
+      const ra = parseFloat(res.headers.get("Retry-After"));
+      await sleep((ra > 0 ? ra : 5 * (attempt + 1)) * 1000);
+      continue;
+    }
+    if (!res.ok) throw new Error("OGS returned HTTP " + res.status);
+    return res.json();
+  }
+}
+
+async function resolvePlayer(q, signal) {
+  if (/^\d+$/.test(q)) {
+    const p = await getJSON(`${API}/players/${q}/`, signal);
+    return { id: p.id, username: p.username };
+  }
+  const d = await getJSON(`${API}/players/?username=${encodeURIComponent(q)}`, signal);
+  const list = d.results || [];
+  const p = list.find(r => String(r.username).toLowerCase() === q.toLowerCase()) || list[0];
+  if (!p) throw new Error(`No OGS player named "${q}"`);
+  return { id: p.id, username: p.username };
+}
+
+async function fetchGames(player, limit, signal, games, onProgress) {
+  let url = `${API}/players/${player.id}/games/?page_size=50&ordering=-ended&ended__isnull=false`;
+  while (url) {
+    const d = await getJSON(url, signal);
+    games.push(...(d.results || []));
+    if (limit && games.length >= limit) { games.length = limit; onProgress(games.length, limit); break; }
+    onProgress(games.length, limit ? Math.min(limit, d.count) : d.count);
+    url = d.next ? d.next.replace(/^http:/, "https:") : null;
+    if (url) await sleep(350);                          // be polite to the API
+  }
+}
+
+/* ---------- 2. Parse ---------- */
+function readDataset(raw) {
+  // Accepts the file this page saves, a raw API page ({results:[…]}), or a bare array of games.
+  const games = Array.isArray(raw) ? raw : (raw.games || raw.results || []);
+  let player = raw.player && raw.player.id != null ? raw.player : null;
+  if (!player) {                                        // infer: the id that appears in the most games
+    const seen = new Map();
+    for (const g of games) for (const c of ["black", "white"]) {
+      const p = sideOf(g, c);
+      if (p.id == null) continue;
+      const e = seen.get(p.id) || { id: p.id, username: p.username, n: 0 };
+      e.n++; seen.set(p.id, e);
+    }
+    const top = [...seen.values()].sort((a, b) => b.n - a.n)[0];
+    if (top) player = { id: top.id, username: top.username || "player " + top.id };
+  }
+  return { player, fetched_at: raw.fetched_at || null, games };
+}
+
+function sideOf(g, c) {
+  const p = g.players && g.players[c];
+  if (p && typeof p === "object") return { id: p.id, username: p.username };
+  const v = g[c];
+  if (v && typeof v === "object") return { id: v.id, username: v.username };
+  return { id: v, username: null };
+}
+
+function speedOf(g) {
+  if (g.speed) return g.speed;
+  const t = g.time_per_move;
+  if (!t) return "unknown";
+  return t < 10 ? "blitz" : t < 3600 ? "live" : "correspondence";
+}
+
+function outcomeOf(s) {
+  s = String(s || "").toLowerCase();
+  if (s.includes("resign")) return "Resignation";
+  if (s.includes("time")) return "Timeout";
+  if (s.includes("point")) return "Points";
+  if (s.includes("cancel")) return "Cancellation";
+  if (s.includes("disconn")) return "Disconnection";
+  if (s.includes("moderator") || s.includes("decision")) return "Moderator decision";
+  return s ? "Other" : "Unknown";
+}
+
+function normalise(g, pid) {
+  const b = sideOf(g, "black"), w = sideOf(g, "white");
+  const color = b.id == pid ? "black" : w.id == pid ? "white" : null;
+  if (!color) return null;
+  const meLost = color === "black" ? g.black_lost : g.white_lost;
+  const oppLost = color === "black" ? g.white_lost : g.black_lost;
+  let result = "none";
+  if (g.annulled) result = "annulled";
+  else if (oppLost && !meLost) result = "win";
+  else if (meLost && !oppLost) result = "loss";
+  const hr = g.historical_ratings && g.historical_ratings[color];
+  const rating = hr && hr.ratings && hr.ratings.overall ? hr.ratings.overall.rating : null;
+  return {
+    id: g.id, color, result,
+    opponent: color === "black" ? w : b,
+    ranked: !!g.ranked,
+    size: g.width && g.height ? `${g.width}×${g.height}` : "unknown",
+    speed: speedOf(g),
+    handicap: g.handicap > 0,
+    outcome: outcomeOf(g.outcome),
+    ended: g.ended ? new Date(g.ended) : null,
+    rating: typeof rating === "number" ? rating : null,
+  };
+}
+
+function tally(list) {
+  let w = 0, l = 0;
+  for (const g of list) { if (g.result === "win") w++; else if (g.result === "loss") l++; }
+  return { games: list.length, w, l, rate: w + l ? w / (w + l) : null };
+}
+
+function groupBy(list, keyFn) {
+  const m = new Map();
+  for (const g of list) { const k = keyFn(g); if (!m.has(k)) m.set(k, []); m.get(k).push(g); }
+  return [...m.entries()].map(([key, items]) => ({ key, ...tally(items) }));
+}
+
+function analyse(dataset) {
+  const pid = dataset.player ? dataset.player.id : null;
+  const all = dataset.games.map(g => normalise(g, pid)).filter(Boolean)
+    .sort((a, b) => (a.ended ? a.ended.getTime() : 0) - (b.ended ? b.ended.getTime() : 0));
+  const decided = all.filter(g => g.result === "win" || g.result === "loss");
+
+  let best = 0, run = 0;
+  for (const g of decided) { run = g.result === "win" ? run + 1 : 0; if (run > best) best = run; }
+  let current = 0, currentType = decided.length ? decided[decided.length - 1].result : null;
+  for (let i = decided.length - 1; i >= 0 && decided[i].result === currentType; i--) current++;
+
+  const byCount = (a, b) => b.games - a.games;
+  const opp = new Map();
+  for (const g of decided) {
+    const k = g.opponent.id;
+    if (!opp.has(k)) opp.set(k, { name: g.opponent.username || "player " + k, items: [] });
+    opp.get(k).items.push(g);
+  }
+  const rated = all.filter(g => g.rating != null && g.ended);
+  return {
+    player: dataset.player, total: all.length,
+    skipped: dataset.games.length - all.length,
+    annulled: all.filter(g => g.result === "annulled").length,
+    noResult: all.filter(g => g.result === "none").length,
+    first: all.find(g => g.ended) || null, last: all[all.length - 1] || null,
+    overall: tally(decided),
+    color: groupBy(decided, g => g.color === "black" ? "As Black" : "As White").sort((a, b) => a.key.localeCompare(b.key)),
+    ranked: groupBy(decided, g => g.ranked ? "Ranked" : "Unranked").sort((a, b) => a.key.localeCompare(b.key)),
+    size: groupBy(decided, g => g.size).sort(byCount),
+    speed: groupBy(decided, g => g.speed[0].toUpperCase() + g.speed.slice(1)).sort(byCount),
+    handicap: groupBy(decided, g => g.handicap ? "Handicap" : "Even").sort(byCount),
+    winsBy: groupBy(decided.filter(g => g.result === "win"), g => g.outcome).sort(byCount),
+    lossesBy: groupBy(decided.filter(g => g.result === "loss"), g => g.outcome).sort(byCount),
+    years: groupBy(decided.filter(g => g.ended), g => String(g.ended.getFullYear())).sort((a, b) => a.key.localeCompare(b.key)),
+    opponents: [...opp.values()].map(o => ({ key: o.name, ...tally(o.items) })).sort(byCount).slice(0, 10),
+    streak: { best, current, currentType },
+    ratings: rated.map(g => ({ t: g.ended.getTime(), r: g.rating })),
+    recent: all.slice(-30).reverse(),
+  };
+}
+
+/* ---------- 3. Render ---------- */
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const pct = r => r == null ? "–" : (r * 100).toFixed(1) + "%";
+const fmtDate = d => d ? d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }) : "–";
+function rankStr(rating) {
+  const r = Math.floor(Math.log(rating / 525) * 23.15);
+  return r < 30 ? (30 - r) + "k" : (r - 29) + "d";
+}
+
+function tile(k, v, d) { return `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div><div class="d">${d || "&nbsp;"}</div></div>`; }
+
+function breakdown(title, rows, opts = {}) {
+  if (!rows.length) return "";
+  const body = rows.map(r => opts.countOnly
+    ? `<tr><td>${esc(r.key)}</td><td class="num">${r.games}</td></tr>`
+    : `<tr><td>${esc(r.key)}</td><td class="num">${r.games}</td><td class="num">${r.w}–${r.l}</td>
+       <td class="num">${pct(r.rate)}</td><td><div class="bar"><i style="width:${(r.rate || 0) * 100}%"></i></div></td></tr>`).join("");
+  const head = opts.countOnly ? `<th>${opts.col || ""}</th><th class="num">Games</th>`
+    : `<th>${opts.col || ""}</th><th class="num">Games</th><th class="num">W–L</th><th class="num">Win rate</th><th></th>`;
+  return `<div class="card"><h2>${title}</h2><div class="scroll"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div></div>`;
+}
+
+function ratingChart(pts) {
+  if (pts.length < 2) return "";
+  const W = 640, H = 200, L = 44, R = 10, T = 10, B = 24;
+  const t0 = pts[0].t, t1 = pts[pts.length - 1].t || t0 + 1;
+  let lo = Math.min(...pts.map(p => p.r)), hi = Math.max(...pts.map(p => p.r));
+  if (hi - lo < 50) { lo -= 25; hi += 25; }
+  const x = t => L + (t1 === t0 ? 0 : (t - t0) / (t1 - t0)) * (W - L - R);
+  const y = r => T + (1 - (r - lo) / (hi - lo)) * (H - T - B);
+  const path = pts.map((p, i) => (i ? "L" : "M") + x(p.t).toFixed(1) + " " + y(p.r).toFixed(1)).join("");
+  const grid = [lo, (lo + hi) / 2, hi].map(v =>
+    `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)"/>
+     <text x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${Math.round(v)}</text>`).join("");
+  return `<div class="card"><h2>Rating at game time</h2>
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Rating over time, from ${Math.round(pts[0].r)} to ${Math.round(pts[pts.length - 1].r)}">
+      ${grid}<path d="${path}" fill="none" stroke="var(--kaya)" stroke-width="1.8" stroke-linejoin="round"/>
+      <text x="${L}" y="${H - 6}">${fmtDate(new Date(t0))}</text>
+      <text x="${W - R}" y="${H - 6}" text-anchor="end">${fmtDate(new Date(t1))}</text>
+    </svg>
+    <p class="note">Overall rating recorded before each game (Glicko-2). Latest: ${Math.round(pts[pts.length - 1].r)} ≈ ${rankStr(pts[pts.length - 1].r)}.</p></div>`;
+}
+
+function render(s) {
+  const out = document.getElementById("out");
+  if (!s.total) { out.innerHTML = `<div class="card">No finished games found for this player in the data.</div>`; return; }
+  const find = (rows, k) => rows.find(r => r.key === k) || { games: 0, w: 0, l: 0, rate: null };
+  const blk = find(s.color, "As Black"), wht = find(s.color, "As White");
+  const rk = find(s.ranked, "Ranked"), un = find(s.ranked, "Unranked");
+  const wl = r => `${r.w} W – ${r.l} L`;
+  const lastRating = s.ratings.length ? s.ratings[s.ratings.length - 1].r : null;
+  const extras = [s.annulled && `${s.annulled} annulled`, s.noResult && `${s.noResult} with no winner`].filter(Boolean).join(", ");
+
+  const recent = s.recent.map(g => `<tr>
+      <td>${fmtDate(g.ended)}</td><td>${esc(g.opponent.username || g.opponent.id)}</td>
+      <td>${g.color === "black" ? "● Black" : "○ White"}</td><td>${esc(g.size)}</td><td>${g.ranked ? "Ranked" : "Unranked"}</td>
+      <td class="${g.result}">${{ win: "Win", loss: "Loss", annulled: "Annulled", none: "–" }[g.result]} <span class="loss">· ${esc(g.outcome)}</span></td>
+      <td><a href="https://online-go.com/game/${encodeURIComponent(g.id)}" target="_blank" rel="noopener">View</a></td></tr>`).join("");
+
+  out.innerHTML = `
+    <h2 style="font-size:1.3rem">${esc(s.player.username)}</h2>
+    <p class="sub">${s.total.toLocaleString()} finished games · ${fmtDate(s.first && s.first.ended)} – ${fmtDate(s.last && s.last.ended)}${extras ? " · " + extras + " (left out of win rates)" : ""}</p>
+    <div class="tiles">
+      ${tile("Win rate", pct(s.overall.rate), wl(s.overall))}
+      ${tile("As Black", pct(blk.rate), wl(blk))}
+      ${tile("As White", pct(wht.rate), wl(wht))}
+      ${tile("Ranked", pct(rk.rate), wl(rk))}
+      ${tile("Unranked", pct(un.rate), wl(un))}
+      ${tile("Best win streak", s.streak.best, s.streak.current ? `now: ${s.streak.current} ${s.streak.currentType === "win" ? "wins" : "losses"} in a row` : "")}
+      ${lastRating != null ? tile("Rating", Math.round(lastRating), "≈ " + rankStr(lastRating)) : ""}
+    </div>
+    ${ratingChart(s.ratings)}
+    <div class="grid2">
+      ${breakdown("Board size", s.size)}
+      ${breakdown("Game speed", s.speed)}
+      ${breakdown("Handicap", s.handicap)}
+      ${breakdown("By year", s.years)}
+      ${breakdown("How wins came", s.winsBy, { countOnly: true })}
+      ${breakdown("How losses came", s.lossesBy, { countOnly: true })}
+    </div>
+    <div style="height:16px"></div>
+    ${breakdown("Most frequent opponents", s.opponents, { col: "Opponent" })}
+    <div class="card"><h2>Latest ${s.recent.length} games</h2><div class="scroll"><table>
+      <thead><tr><th>Ended</th><th>Opponent</th><th>Colour</th><th>Board</th><th>Type</th><th>Result</th><th></th></tr></thead>
+      <tbody>${recent}</tbody></table></div></div>`;
+}
+
+/* ---------- 4. Wiring ---------- */
+function init() {
+  const $ = id => document.getElementById(id);
+  let dataset = null, controller = null;
+
+  const status = (msg, err) => { $("status").textContent = msg; $("status").classList.toggle("err", !!err); };
+  const show = () => { $("save").disabled = !dataset || !dataset.games.length; if (dataset) render(analyse(dataset)); };
+
+  $("form").addEventListener("submit", async e => {
+    e.preventDefault();
+    const q = $("user").value.trim(); if (!q) return;
+    const limit = parseInt($("limit").value, 10) || 0;
+    controller = new AbortController();
+    const games = []; let player = null;
+    $("go").disabled = true; $("stop").hidden = false; $("prog").hidden = false; $("prog").removeAttribute("value");
+    status("Looking up player…");
+    try {
+      player = await resolvePlayer(q, controller.signal);
+      status(`Found ${player.username} (id ${player.id}). Fetching games…`);
+      await fetchGames(player, limit, controller.signal, games, (n, total) => {
+        $("prog").max = total || 1; $("prog").value = n;
+        status(`Fetched ${n.toLocaleString()} of ${(total || n).toLocaleString()} games…`);
+      });
+      status(`Done: ${games.length.toLocaleString()} games for ${player.username}. Use "Save JSON file" to keep them.`);
+    } catch (err) {
+      if (err.name === "AbortError") status(`Stopped after ${games.length.toLocaleString()} games.`);
+      else if (err instanceof TypeError) status("Could not reach online-go.com from this page (network problem or the browser blocked the request). " + (games.length ? `Showing the ${games.length} games fetched so far.` : ""), true);
+      else status(err.message + (games.length ? ` Showing the ${games.length} games fetched so far.` : ""), true);
+    } finally {
+      $("go").disabled = false; $("stop").hidden = true; $("prog").hidden = true;
+    }
+    if (player && games.length) { dataset = { player, fetched_at: new Date().toISOString(), games }; show(); }
+  });
+
+  $("stop").addEventListener("click", () => controller && controller.abort());
+
+  $("save").addEventListener("click", () => {
+    const blob = new Blob([JSON.stringify(dataset, null, 1)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `ogs-${String(dataset.player.username).replace(/[^\w.-]+/g, "_")}-games.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+
+  $("file").addEventListener("change", async e => {
+    const f = e.target.files[0]; if (!f) return;
+    try {
+      dataset = readDataset(JSON.parse(await f.text()));
+      if (!dataset.player) throw new Error("no player found in file");
+      status(`Loaded ${dataset.games.length.toLocaleString()} games for ${dataset.player.username} from ${f.name}` +
+             (dataset.fetched_at ? ` (fetched ${fmtDate(new Date(dataset.fetched_at))}).` : "."));
+      show();
+    } catch (err) { status("That file isn't a games JSON this page understands: " + err.message, true); }
+    e.target.value = "";
+  });
+  document.querySelector(".filebtn").addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("file").click(); } });
+}
+
+if (typeof document !== "undefined") init();
+if (typeof module !== "undefined") module.exports = { analyse, readDataset };
+</script>
+</body>
+</html>
