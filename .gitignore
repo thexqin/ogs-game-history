@@ -1,0 +1,7 @@
+# Game data saved by the app (personal, large)
+*-games.json
+
+# OS clutter
+.DS_Store
+Thumbs.db
+desktop.ini
